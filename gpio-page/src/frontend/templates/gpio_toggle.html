@@ -1,0 +1,13 @@
+<button id="pin-input"
+  hx-swap="none"
+  hx-post="/toggle-pin"
+  {% if item.mode = 0 %}
+    disabled
+  {% endif %}
+  >
+
+  {% if item.mode = 0 %}
+    Mode: Output
+  {% endif %}
+
+</button>

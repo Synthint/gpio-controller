@@ -1,0 +1,29 @@
+<ul>
+
+  {% for item in gpio_pins %}
+      <li>
+        <button 
+          hx-post="/change-mode/{{ item.number }}" 
+          hx-vals='{"pin": "{{ item.number }}", "mode": "{{ item.mode }}"}' 
+          hx-swap="innerHtml"
+          hx-target="#pin-input">
+          <label>Pin {{ item.number }}</label>
+          <label>Current Mode: {{ item.mode }}</label>
+        </button>
+
+        <button id="pin-input"
+          hx-swap="none"
+          hx-post="/toggle-pin"
+          disabled>
+            Toggle Pin Power
+        </button>
+
+        <svg width="20" height="20" 
+            hx-ext="ws" ws-connect="/ws/gpio_pins/item.number">
+          <rect  id="power_state" width="20" height="20" style="fill:#00FF00;stroke-width:3;stroke:rgb(0,0,0)" />
+        </svg>
+      </li>
+  {% endfor %}
+
+
+</ul>

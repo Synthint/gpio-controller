@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpio-controller-deployment
+  labels:
+    role: hardware-controller-deployment
+spec:
+  replicas: 1
+  selector: 
+    matchLabels:
+      role: hardware-controller
+  template:
+    metadata:
+      name: gpio-controller-pod
+      labels:
+        role: hardware-controller
+    spec:
+      nodeSelector:
+        extra-hardware: rpi-gpio
+      containers:
+      - image: cerosyn/gpio-controller:latest
+        imagePullPolicy: Always
+        name: gpio-controller
+        securityContext:
+            privileged: true
+        resources:
+          limits: 
+            cpu: "0.5"
+            memory: "50Mi"
+        
+
+
+
+
