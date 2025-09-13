@@ -1,0 +1,191 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpio-agent-deployment
+  labels:
+    role: hardware-controller-deployment
+spec:
+  replicas: 1
+  selector: 
+    matchLabels:
+      role: hardware-controller
+      app: gpio-agent
+  template:
+    metadata:
+      name: gpio-agent-pod
+      labels:
+        role: hardware-controller
+        app: gpio-agent
+    spec:
+      serviceAccountName: gpio-agent
+      nodeSelector:
+        extra-hardware: rpi-gpio
+      containers:
+      - image: cerosyn/gpio-agent:0.0.12
+        env:
+          - name: PYTHONUNBUFFERED
+            value: "1"
+        imagePullPolicy: Always
+        name: gpio-agent
+        securityContext:
+            privileged: true
+        resources:
+          limits: 
+            cpu: "0.5"
+            memory: "50Mi"
+          requests:
+            cpu: "0.2"
+            memory: "25Mi"
+        volumeMounts:
+        - name: gpio-jobs
+          mountPath: /app/jobs
+          readOnly: true
+      volumes:
+      - name: gpio-jobs
+        configMap:
+          name: gpio-agent-config
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpio-agent-config
+  labels:
+    role: hardware-controller-config
+data:
+  output_pin_4.json: |
+    {
+      "apiVersion": "batch/v1",
+      "kind": "Job",
+      "metadata": {
+        "name": "pass-creator-job",
+        "namespace": "default"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "name": "pass-creator",
+                "image": "cerosyn/pass-creator:0.0.1",
+                "env": [
+                  {
+                    "name": "LOGIN_URL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "parking-pass-credentials-and-config",
+                        "key": "LOGIN_URL"
+                      }
+                    }
+                  },
+                  {
+                    "name": "PARKING_PASS_URL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "parking-pass-credentials-and-config",
+                        "key": "PARKING_PASS_URL"
+                      }
+                    }
+                  },
+                  {
+                    "name": "EMAIL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "parking-pass-credentials-and-config",
+                        "key": "EMAIL"
+                      }
+                    }
+                  },
+                  {
+                    "name": "PASSWORD",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "parking-pass-credentials-and-config",
+                        "key": "PASSWORD"
+                      }
+                    }
+                  },
+                  {
+                    "name": "VEHICLE_MAKE",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "parking-pass-credentials-and-config",
+                        "key": "VEHICLE_MAKE"
+                      }
+                    }
+                  },
+                  {
+                    "name": "VEHICLE_MODEL",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "parking-pass-credentials-and-config",
+                        "key": "VEHICLE_MODEL"
+                      }
+                    }
+                  },
+                  {
+                    "name": "VEHICLE_LICENSE_PLATE",
+                    "valueFrom": {
+                      "secretKeyRef": {
+                        "name": "parking-pass-credentials-and-config",
+                        "key": "VEHICLE_LICENSE_PLATE"
+                      }
+                    }
+                  },
+                  {
+                    "name": "CREATE_PASS",
+                    "value": "false"
+                  },
+                  {
+                    "name": "PRINT_SERVER_URL",
+                    "value": "http://akri-printer-ef4aec-svc.akri.svc.cluster.local:8000/print"
+                  }
+                ]
+              }
+            ],
+            "restartPolicy": "Never"
+          }
+        },
+        "backoffLimit": 2
+      }
+    }
+
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gpio-agent
+  namespace: default
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gpio-job-creator
+  namespace: default
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gpio-job-creator-binding
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: gpio-agent
+    namespace: default
+roleRef:
+  kind: Role
+  name: gpio-job-creator
+  apiGroup: rbac.authorization.k8s.io
+
+
