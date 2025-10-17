@@ -21,7 +21,7 @@ spec:
       nodeSelector:
         extra-hardware: rpi-gpio
       containers:
-      - image: cerosyn/gpio-agent:0.0.12
+      - image: cerosyn/gpio-agent:0.0.15
         env:
           - name: PYTHONUNBUFFERED
             value: "1"
@@ -68,7 +68,7 @@ data:
             "containers": [
               {
                 "name": "pass-creator",
-                "image": "cerosyn/pass-creator:0.0.1",
+                "image": "cerosyn/pass-creator:0.0.2",
                 "env": [
                   {
                     "name": "LOGIN_URL",
@@ -135,11 +135,11 @@ data:
                   },
                   {
                     "name": "CREATE_PASS",
-                    "value": "false"
+                    "value": "true"
                   },
                   {
                     "name": "PRINT_SERVER_URL",
-                    "value": "http://akri-printer-ef4aec-svc.akri.svc.cluster.local:8000/print"
+                    "value": "http://akri-printer-c58fca-svc.akri.svc.cluster.local:8000/print"
                   }
                 ]
               }

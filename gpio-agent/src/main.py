@@ -1,17 +1,11 @@
+from datetime import *
 import time
 import lgpio
 import signal
-import time
 import os
-import importlib.util
-import re
-from collections import defaultdict
-from typing import Callable, Dict, List
 import json
 import uuid
-import time
-from kubernetes import client, config
-from kubernetes.client.rest import ApiException
+import requests
 
 class GPIO_controller:
   GPIO_PIN_NUMBERS = [4, 17, 27, 22, 5, 6, 13, 19, 26, 21, 20, 16, 12, 25, 24, 23, 18]
@@ -75,7 +69,7 @@ class GPIO_controller:
     if mode == self.MODE_OUTPUT:
       lgpio.gpio_claim_output(self.gpio_chip, pin)
     else:
-      lgpio.gpio_claim_input(self.gpio_chip, pin)
+      lgpio.gpio_claim_input(self.gpio_chip, pin, lgpio.SET_PULL_UP)
   
   def get_pin_mode(self, pin):
     self.validate_settings(pin)
@@ -118,67 +112,87 @@ class GPIO_controller:
 #
 # Split this out better in the future
 #
-JOB_NS = "default"
-def trigger_job(job_definition: Dict):
+API_SERVER = "https://kubernetes.default.svc"
+NAMESPACE = "default" # in the future pass in as an env var
+TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+CA_CERT_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+def load_token():
+  with open(TOKEN_PATH, 'r') as f:
+    return f.read().strip()
+
+def trigger_job(job_definition: dict):
+  token = load_token()
   
-  # Load the kube config from within the cluster
-  print(f"[DEBUG] Triggering Kubernetes job at {time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-  print("[DEBUG] Loading incluster config")
-  try:
-      config.load_incluster_config()
-      print("[DEBUG] Loaded incluster config successfully")
-  except Exception as e:
-      print(f"[ERROR] Failed to load incluster config: {e}")
-
-  batch_v1 = client.BatchV1Api()
-
-
   job_random_suffix = str(uuid.uuid4())[:8]
-  print(f"[DEBUG] Apply suffix: {job_random_suffix} to job name")
-
-
-  # Create a unique job name
   job_name = f"pass-creator-job-{job_random_suffix}"
+  
   if 'metadata' not in job_definition:
     job_definition['metadata'] = {}
   job_definition['metadata']['name'] = job_name
 
-  #override job namespace
-  job_definition['metadata']['namespace'] = JOB_NS
-
-
-  try:
-      api_response = batch_v1.create_namespaced_job(
-          body=job_definition,
-          namespace="default"
-      )
-      print(f"Job created. Status='{api_response.status}'")
-  except ApiException as e:
-      print(f"Exception when creating job: {e}")
+  job_namespace = NAMESPACE
+  if 'metadata' in job_definition and 'namespace' in job_definition['metadata']:
+    job_namespace = job_definition['metadata']['namespace']
+  
+  url = f"{API_SERVER}/apis/batch/v1/namespaces/{job_namespace}/jobs"
+  
+  headers = {
+    "Authorization": f"Bearer {token}",
+    "Content-Type": "application/json"
+  }
+  
+  print(f"[DEBUG] Posting job to {url} with name {job_name}")
+  
+  response = requests.post(
+    url,
+    headers=headers,
+    data=json.dumps(job_definition),
+    verify=CA_CERT_PATH
+  )
+  
+  if response.status_code in (200, 201):
+    print(f"[INFO] Job created successfully: {job_name}")
+  else:
+    print(f"[ERROR] Failed to create job: {response.status_code} {response.text}")
+  
 
 
 
 print("[INFO] Starting GPIO agent...")
 
 JOB_DIR = "/app/jobs"
+RATE_LIMIT_TIME = 30
 
 gpio = GPIO_controller()
 
+recent_calls = {}
+
 while True:
+  time.sleep(0.1)
+  current_time = datetime.now()
   for pin in gpio.GPIO_PIN_NUMBERS:
     try:
       state = gpio.get_pin_state(pin)
-      if state == gpio.STATE_ON:
+      if state == gpio.STATE_OFF: # TODO: Check for both states and look for file names like output_pin_<pin>_on_<extra text here>.json
         config_file_path = f"{JOB_DIR}/output_pin_{pin}.json"
         if os.path.exists(config_file_path):
           print(f"[INFO] Found configuration for pin {pin}, triggering job...")
           with open(config_file_path, 'r') as f:
             job_definition = json.load(f)
             print(f"[DEBUG] Job Definition: {job_definition}")
-            trigger_job(job_definition)
-          # Reset the pin after handling
-          gpio.set_pin_state(pin, gpio.STATE_OFF)
-        else:
-          print(f"[WARNING] No configuration found for pin {pin}, ignoring signal.")
+
+            if config_file_path in recent_calls:
+              time_diff: timedelta = datetime.now() - recent_calls[config_file_path] 
+              if time_diff.total_seconds() > RATE_LIMIT_TIME:
+                recent_calls[config_file_path] = current_time
+                trigger_job(job_definition)
+              else:
+                print(f"[INFO] Job at {config_file_path} cannot be triggered due to rate limit, please wait {RATE_LIMIT_TIME} seconds between jobs")
+            else: 
+              recent_calls[config_file_path] = current_time
+              trigger_job(job_definition)
+        # else:
+        #   #print(f"[WARNING] No configuration found for pin {pin}, ignoring signal.")
     except Exception as e:
       print(f"[ERROR] Error processing pin {pin}: {e}")
