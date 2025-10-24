@@ -36,7 +36,16 @@ class GPIO_controller:
     self.GPIO_pin_modes = {pin: self.MODE_INPUT for pin in self.GPIO_PIN_NUMBERS}
     self.gpio_chip = lgpio.gpiochip_open(0)
     for pin in self.GPIO_PIN_NUMBERS:
-      lgpio.gpio_claim_input(self.gpio_chip, pin)
+      try:
+        print(f"[INFO] Claiming GPIO pin {pin} as input with pull-up")
+        lgpio.gpio_claim_input(self.gpio_chip, pin)
+      except Exception as e:
+        print(f"[ERROR] Failed to claim GPIO pin {pin}: {e}")
+        print("[INFO] Cleaning up previously claimed GPIO pins and exiting...")
+        self.cleanup(None, None)
+        lgpio.gpiochip_close(self.gpio_chip)
+        exit(1)
+        
     signal.signal(signal.SIGINT, self.cleanup)
     signal.signal(signal.SIGTERM, self.cleanup)
 
