@@ -8,7 +8,7 @@ import uuid
 import requests
 
 class GPIO_controller:
-  GPIO_PIN_NUMBERS = [4, 17, 27, 22, 5, 6, 13, 19, 26, 21, 20, 16, 12, 25, 24, 23, 18]
+  GPIO_PIN_NUMBERS = [4, 17, 27, 22, 5, 6, 13, 19, 26, 21, 16, 12, 25, 24, 23, 18]
   
   STATE_ON = 1
   STATE_OFF = 0
@@ -38,13 +38,9 @@ class GPIO_controller:
     for pin in self.GPIO_PIN_NUMBERS:
       try:
         print(f"[INFO] Claiming GPIO pin {pin} as input with pull-up")
-        lgpio.gpio_claim_input(self.gpio_chip, pin)
+        lgpio.gpio_claim_input(self.gpio_chip, pin, lgpio.SET_PULL_UP)
       except Exception as e:
         print(f"[ERROR] Failed to claim GPIO pin {pin}: {e}")
-        print("[INFO] Cleaning up previously claimed GPIO pins and exiting...")
-        self.cleanup(None, None)
-        lgpio.gpiochip_close(self.gpio_chip)
-        exit(1)
         
     signal.signal(signal.SIGINT, self.cleanup)
     signal.signal(signal.SIGTERM, self.cleanup)
@@ -173,7 +169,14 @@ print("[INFO] Starting GPIO agent...")
 JOB_DIR = "/app/jobs"
 RATE_LIMIT_TIME = 30
 
-gpio = GPIO_controller()
+gpio = None
+try:
+  gpio = GPIO_controller()
+except Exception as e:
+  print(f"[ERROR] Failed to initialize GPIO controller: {e}")
+  time.sleep(30) # Give some time for debugging before exit. TODO: Remove in production
+  
+  exit(1)
 
 recent_calls = {}
 
