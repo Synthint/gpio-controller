@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- gpio_v1alpha1_pinclaim.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
